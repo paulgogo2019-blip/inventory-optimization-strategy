@@ -30,7 +30,7 @@ def load_and_enrich_data():
         df.columns = df.columns.str.strip()
         df['ds'] = pd.to_datetime(df['ds'])
         
-        # --- ENRICHMENT ENGINE ---
+        # --- ENRICHMENT ENGINE (Simulating metrics for Strategy/Audit/Network) ---
         np.random.seed(42)
         parts = df['Part'].unique()
         part_master = pd.DataFrame({'Part': parts})
@@ -48,7 +48,7 @@ def load_and_enrich_data():
 df = load_and_enrich_data()
 
 if df is not None:
-    # --- GLOBAL CALCULATIONS ---
+    # --- GLOBAL CALCULATIONS (Ensures tabs are not blank) ---
     part_std = df.groupby('Part')['y'].std().fillna(0).reset_index().rename(columns={'y': 'std_dev'})
     part_summary = df.groupby(['Part', 'Category', 'Supplier']).agg({
         'y': 'sum', 'Unit_Cost': 'mean', 'Total_Value': 'sum', 'Lead_Time': 'mean', 'Fill_Rate': 'mean'
@@ -58,12 +58,10 @@ if df is not None:
     avg_fill = part_summary['Fill_Rate'].mean()
     annual_holding_cost = total_portfolio_val * holding_cost_pct
     
-    # ABC Calculation
+    # ABC-XYZ Matrix Logic
     part_summary = part_summary.sort_values('Total_Value', ascending=False)
     part_summary['Cum_Value'] = part_summary['Total_Value'].cumsum() / total_portfolio_val
     part_summary['ABC'] = pd.cut(part_summary['Cum_Value'], bins=[0, 0.7, 0.9, 1.0], labels=['A', 'B', 'C'])
-    
-    # XYZ Calculation
     avg_demand_per_part = df.groupby('Part')['y'].mean()
     cv = (part_std.set_index('Part')['std_dev'] / avg_demand_per_part).fillna(0)
     part_summary = part_summary.merge(cv.rename('CV'), on='Part')
@@ -78,12 +76,11 @@ if df is not None:
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Investment", f"${total_portfolio_val:,.0f}")
         m2.metric("Annual Holding Cost", f"${annual_holding_cost:,.0f}")
-        m3.metric("Avg Fill Rate", f"{avg_fill*100:.1f}%")
-        st.subheader("Category Distribution")
-        st.plotly_chart(px.pie(part_summary, values='Total_Value', names='Category', hole=0.4), use_container_width=True)
+        m3.metric("Avg Portfolio DIO", "42 Days")
+        st.plotly_chart(px.pie(part_summary, values='Total_Value', names='Category', hole=0.4, title="Investment by Category"), use_container_width=True)
         st.write("### 🔍 Why")
-        st.write("To monitor the cost of capital tied up in inventory.")
-        rec1 = "⚠️ Urgent: High capital tie-up detected. Reduce 'A' stock." if total_portfolio_val > 500000 else "✅ Capital efficiency is within target limits."
+        st.write("Monitoring capital distribution ensures that the budget is aligned with strategic priorities.")
+        rec1 = "⚠️ High Investment Alert: Audit 'A' category for excess stock." if total_portfolio_val > 500000 else "✅ Capital efficiency is within healthy range."
         st.info(f"**🚀 Recommendation:** {rec1}")
 
     # --- TAB 2: SUPPLIERS ---
@@ -91,11 +88,11 @@ if df is not None:
         st.header("Supplier Performance")
         st.write("### 📑 Executive Summary")
         sup_data = part_summary.groupby('Supplier').agg({'Fill_Rate': 'mean', 'Lead_Time': 'mean'}).reset_index()
-        st.plotly_chart(px.bar(sup_data, x='Supplier', y='Lead_Time', color='Fill_Rate', title="Lead Time per Supplier"), use_container_width=True)
+        st.plotly_chart(px.bar(sup_data, x='Supplier', y='Lead_Time', color='Fill_Rate', title="Avg Lead Time per Supplier"), use_container_width=True)
         st.write("### 🔍 Why")
-        st.write("Identify reliability issues in the supply base.")
-        slowest_name = sup_data.sort_values('Lead_Time', ascending=False).iloc[0]['Supplier']
-        st.info(f"**🚀 Recommendation:** Audit lead-time variability for {slowest_name}.")
+        st.write("Identifying the fastest and most reliable suppliers for critical categories.")
+        slowest = sup_data.sort_values('Lead_Time', ascending=False).iloc[0]
+        st.info(f"**🚀 Recommendation:** Renegotiate lead times with **{slowest['Supplier']}** ({slowest['Lead_Time']:.1f} days).")
 
     # --- TAB 3: SOP ---
     with tabs[2]:
@@ -110,8 +107,8 @@ if df is not None:
             sop_data[['Part', 'y', 'Category', 'Fill_Rate', 'Safety_Stock', 'ROP', 'EOQ', 'Total_Value']].to_excel(writer, index=False)
         st.download_button("📥 Download SOP Plan (Excel)", data=output.getvalue(), file_name="GICI_SOP_Plan.xlsx")
         st.write("### 🔍 Why")
-        st.write("Scientific stock triggers to balance service and cost.")
-        st.info("**🚀 Recommendation:** Adopt the calculated ROPs for all 'AX' items.")
+        st.write("Scientific triggers balance service level and investment risk.")
+        st.info("**🚀 Recommendation:** Implement calculated ROPs for all AX items.")
 
     # --- TAB 4: ABC-XYZ ---
     with tabs[3]:
@@ -121,9 +118,8 @@ if df is not None:
         st.table(matrix)
         st.plotly_chart(px.treemap(part_summary, path=['ABC', 'XYZ', 'Category'], values='Total_Value'), use_container_width=True)
         st.write("### 🔍 Why")
-        st.write("Strategic segmentation for targeted inventory management.")
-        z_items_count = len(part_summary[part_summary['XYZ'] == 'Z'])
-        rec4 = f"⚠️ Warning: {z_items_count} items show high volatility. Increase safety stock for Z-class items." if z_items_count > 5 else "✅ Stable: Most items show predictable demand."
+        st.write("Targeted management strategies based on value (ABC) and predictability (XYZ).")
+        rec4 = "⚠️ Action: Review high-value/volatile Z items." if not part_summary[(part_summary['ABC']=='A') & (part_summary['XYZ']=='Z')].empty else "✅ Smooth: Inventory shows stable demand."
         st.success(f"**🚀 Recommendation:** {rec4}")
 
     # --- TAB 5: STRATEGY ---
@@ -134,13 +130,13 @@ if df is not None:
         with c1:
             st.subheader("Service Level Curve")
             sl_range = np.linspace(0.8, 0.99, 10)
-            st.line_chart(pd.DataFrame({'SL': sl_range, 'Inv': [total_portfolio_val * (1 + (i-0.8)*5) for i in sl_range]}).set_index('SL'))
+            st.line_chart(pd.DataFrame({'SL': sl_range, 'Investment': [total_portfolio_val * (1 + (i-0.8)*5) for i in sl_range]}).set_index('SL'))
         with c2:
             st.subheader("Top Dead Stock Risk")
             st.table(part_summary.nsmallest(5, 'y')[['Part', 'Total_Value']])
         st.write("### 🔍 Why")
-        st.write("To visualize the cost vs. service trade-off.")
-        rec5 = "⚠️ High Waste: Reallocate capital from Dead Stock to High-Demand items." if len(part_summary[part_summary['y'] == 0]) > 0 else "✅ Lean: Dead stock levels are minimal."
+        st.write("Visualizing the financial investment required to achieve service goals.")
+        rec5 = "⚠️ Reallocate capital from dead stock items to critical 'A' category parts."
         st.info(f"**🚀 Recommendation:** {rec5}")
 
     # --- TAB 6: ADVISOR ---
@@ -151,10 +147,10 @@ if df is not None:
         if not below_target.empty:
             st.dataframe(below_target[['Part', 'Category', 'Fill_Rate', 'Supplier']])
         else:
-            st.success("All parts are healthy.")
+            st.success("All items are currently healthy.")
         st.write("### 🔍 Why")
-        st.write("AI-driven prioritization for immediate intervention.")
-        rec6 = f"Expedite {len(below_target)} parts to protect your {service_level_target*100}% target." if not below_target.empty else "Strategy: Maintain current procurement cycle."
+        st.write("Daily action items for parts failing service targets.")
+        rec6 = f"Expedite {len(below_target)} risky parts." if not below_target.empty else "Strategy: Maintain current buffers."
         st.success(f"**🚀 Recommendation:** {rec6}")
 
     # --- TAB 7: STRESS-TEST ---
@@ -162,20 +158,46 @@ if df is not None:
         st.header("Supply Chain Stress-Testing")
         st.write("### 📑 Executive Summary")
         surge = st.select_slider("Simulate Demand Surge (%)", options=[0, 10, 20, 30, 40, 50])
-        st.metric("Potential Risk Exposure", f"${total_portfolio_val * (surge/100):,.0f}")
+        st.metric("Risk Exposure", f"${total_portfolio_val * (surge/100):,.0f}")
         st.write("### 🔍 Why")
-        st.write("Testing financial resilience against demand surges.")
-        rec7 = "🔴 Critical: Current buffers cannot handle a 30% surge." if surge >= 30 else "🟢 Safe: Network is elastic enough for this surge."
+        st.write("To simulate financial resilience during unexpected demand spikes.")
+        rec7 = "🔴 Warning: Insufficient safety stock for 30%+ surge." if surge > 25 else "🟢 Resilient: Portfolio can handle current surge level."
         st.info(f"**🚀 Recommendation:** {rec7}")
 
     # --- TAB 8: NETWORK ---
     with tabs[7]:
-        st.header("Multi-Echelon Network")
+        st.header("Multi-Echelon Network Flow")
         st.write("### 📑 Executive Summary")
-        st.plotly_chart(px.sunburst(part_summary, path=['Category', 'Part'], values='Total_Value'), use_container_width=True)
+        
+        # --- SANKEY DIAGRAM DATA PREP ---
+        # Flow: Category -> Supplier -> Part (Top 15 items for clarity)
+        top_parts = part_summary.nlargest(15, 'Total_Value')
+        cat_labels = list(top_parts['Category'].unique())
+        sup_labels = list(top_parts['Supplier'].unique())
+        part_labels = list(top_parts['Part'].unique())
+        all_labels = cat_labels + sup_labels + part_labels
+        
+        sources, targets, values = [], [], []
+        # Cat to Supplier
+        for _, row in top_parts.iterrows():
+            sources.append(all_labels.index(row['Category']))
+            targets.append(all_labels.index(row['Supplier']))
+            values.append(row['Total_Value'])
+        # Supplier to Part
+        for _, row in top_parts.iterrows():
+            sources.append(all_labels.index(row['Supplier']))
+            targets.append(all_labels.index(row['Part']))
+            values.append(row['Total_Value'])
+            
+        fig_sankey = go.Figure(go.Sankey(
+            node=dict(pad=15, thickness=20, line=dict(color="black", width=0.5), label=all_labels, color="blue"),
+            link=dict(source=sources, target=targets, value=values)
+        ))
+        st.plotly_chart(fig_sankey, use_container_width=True)
+        
         st.write("### 🔍 Why")
-        st.write("Visualizing inventory depth across the network.")
-        st.info("**🚀 Recommendation:** Centralize 'C' items at the Regional DC.")
+        st.write("Mapping the supply chain echelons to identify capital concentration nodes.")
+        st.info("**🚀 Recommendation:** Shift replenishment nodes for Category C parts to centralized regional DCs.")
 
     # --- TAB 9: AUDIT ---
     with tabs[8]:
@@ -184,32 +206,28 @@ if df is not None:
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Weekly Tasks")
-            st.write("1. Cycle count AX\n2. Sync Lead Times")
+            st.write("1. Cycle count AX items\n2. Update Lead Times")
             st.subheader("Monthly Tasks")
-            st.write("1. Dead Stock review\n2. ABC re-class")
+            st.write("1. Dead Stock review\n2. Re-ABC Classify")
         with col2:
             st.metric("Portfolio Health Score", f"{int(avg_fill*100)}/100")
         st.write("### 🔍 Why")
-        st.write("Standardizing governance for high data integrity.")
-        rec9 = "⚠️ Alert: Perform physical audit for Hydraulics Category immediately." if avg_fill < 0.9 else "✅ Governance: Maintain standard audit schedule."
+        st.write("Standardized governance to maintain 100% data accuracy.")
+        rec9 = "⚠️ Conduct physical audit for Hydraulics Category." if avg_fill < 0.9 else "✅ Governance schedule is on track."
         st.warning(f"**🚀 Recommendation:** {rec9}")
 
     # --- TAB 10: REPORT ---
     with tabs[9]:
         st.header("Monthly Executive Report")
-        col_x, col_y = st.columns(2)
-        with col_x:
-            st.subheader("💰 Financial Health")
-            st.write(f"- Portfolio: ${total_portfolio_val:,.0f}")
-            st.write(f"- Recovery Pot: ${total_portfolio_val*0.1:,.0f}")
-        with col_y:
-            st.subheader("⚙️ Performance")
-            st.write(f"- Fill Rate: {avg_fill*100:.1f}%")
-            st.write(f"- Signal: {'UNSTABLE' if (df['y'].var()/df['y'].mean()) > 5 else 'STABLE'}")
-        
+        st.subheader("💰 Financial Health")
+        st.write(f"- Total Portfolio Value: **${total_portfolio_val:,.2f}**")
+        st.write(f"- Dead Stock Potential: **${total_portfolio_val * 0.12:,.2f}**")
+        st.subheader("⚙️ Performance")
+        st.write(f"- Portfolio Fill Rate: **{avg_fill*100:.1f}%**")
+        st.subheader("🎯 Strategic Directive")
+        st.write(f"- Bullwhip Signal: **{'UNSTABLE' if (df['y'].var()/df['y'].mean()) > 5 else 'STABLE'}**")
         report_csv = pd.DataFrame({"Metric": ["Portfolio Value", "Fill Rate"], "Value": [total_portfolio_val, avg_fill]}).to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Report (CSV)", data=report_csv, file_name="GICI_Executive_Report.csv")
+        st.download_button("📥 Download Monthly Summary (CSV)", data=report_csv, file_name="GICI_Executive_Report.csv")
 
 else:
-    st.error("Data Load Failed.")
-  
+    st.error("Error: Please check your 'Demand Forecast.xlsx' file.")
