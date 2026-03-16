@@ -109,18 +109,24 @@ if df is not None:
         rec2 = f"Review contract with **{worst_sup['Supplier']}** due to sub-par fill rates ({worst_sup['Fill_Rate']*100:.1f}%)."
         st.info(f"**🚀 Recommendation:** {rec2}")
 
-    # --- TAB 3: SOP ---
+   # --- TAB 3: SOP ---
     with tabs[2]:
         st.header("SOP Engine")
         st.write("### 📑 Executive Summary")
         
-        # Generate the downloadable sheet
+        # CORRECTED CALCULATION
         sop_data = part_summary.copy()
-        sop_data['Safety_Stock'] = (sop_data['y'].std() * 1.65).fillna(0)
+        
+        # Calculate standard deviation per part to get a Series, then fillna, then multiply
+        std_devs = df.groupby('Part')['y'].std().fillna(0)
+        sop_data = sop_data.merge(std_devs.rename('std_dev'), on='Part', how='left')
+        
+        sop_data['Safety_Stock'] = sop_data['std_dev'] * 1.65
         sop_data['ROP'] = (sop_data['y']/30 * sop_data['Lead_Time']) + sop_data['Safety_Stock']
-        sop_data['EOQ'] = np.sqrt((2 * sop_data['y'] * 100) / (sop_data['Unit_Cost'] * holding_cost_pct))
+        sop_data['EOQ'] = np.sqrt((2 * sop_data['y'] * 100) / (sop_data['Unit_Cost'] * holding_cost_pct + 0.01))
         sop_data['Holding_Cost'] = sop_data['Total_Value'] * holding_cost_pct
         
+        # Excel Downloader logic remains the same
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             sop_data[['Part', 'Category', 'Fill_Rate', 'Safety_Stock', 'ROP', 'EOQ', 'Holding_Cost', 'Total_Value']].to_excel(writer, index=False)
@@ -128,8 +134,15 @@ if df is not None:
         st.download_button("📥 Download SOP Strategy Sheet (Excel)", data=output.getvalue(), file_name="GICI_SOP_Plan.xlsx")
         
         st.write("### 🔍 Why")
-        st.write("Scientific calculation of safety stock and ROP ensures we don't over-invest in slow-moving stock.")
-        st.info("**🚀 Recommendation:** Implement the calculated ROPs for all 'A' category parts immediately.")
+        st.write("Scientific calculation of safety stock ensures we maintain service levels without capital bloat.")
+        
+        # ADAPTABLE RECOMMENDATION based on Safety Stock levels
+        avg_ss = sop_data['Safety_Stock'].mean()
+        if avg_ss > sop_data['y'].mean() * 0.5:
+            rec3 = "⚠️ High Buffer Alert: Safety stock exceeds 50% of demand. Audit lead time variability to reduce requirements."
+        else:
+            rec3 = "✅ Lean Buffers: Safety stock levels are optimized for current demand volatility."
+        st.info(f"**🚀 Recommendation:** {rec3}")
 
     # --- TAB 4: ABC-XYZ ---
     with tabs[3]:
