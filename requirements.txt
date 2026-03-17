@@ -1,6 +1,7 @@
 streamlit
 pandas
 openpyxl
+xlsxwriter
 plotly==5.24.1
 langchain
 langchain-google-genai
