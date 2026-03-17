@@ -139,15 +139,38 @@ if df is not None:
         rec5 = "⚠️ Reallocate capital from dead stock items to critical 'A' category parts."
         st.info(f"**🚀 Recommendation:** {rec5}")
 
-    # --- TAB 6: ADVISOR ---
+    # --- TAB 6: ADVISOR (THE AI BRAIN) ---
     with tabs[5]:
-        st.header("Gogo Intelligence Advisor")
+        st.header("🤖 GICI Strategic AI Agent")
+        
+        # 1. THE CHAT BOX (This is the box you want!)
+        user_input = st.chat_input("Ask the Advisor (e.g., 'What is the risk with Alpha Logistics?')")
+
+        if user_input:
+            if "GEMINI_API_KEY" not in st.secrets:
+                st.error("API Key missing! Check your .streamlit/secrets.toml file.")
+            else:
+                with st.spinner("Analyzing data..."):
+                    try:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        # This calls the secret key we force-pushed earlier
+                        llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=st.secrets["GEMINI_API_KEY"])
+                        response = llm.invoke(f"You are a supply chain expert. Answer: {user_input}")
+                        st.markdown("### 🧠 Advisor Insights")
+                        st.write(response.content)
+                    except Exception as e:
+                        st.error(f"Brain connection error: {e}")
+
+        st.markdown("---")
+        
+        # 2. YOUR ORIGINAL TABLE
         st.write("### 📑 Executive Summary")
         below_target = part_summary[part_summary['Fill_Rate'] < service_level_target]
         if not below_target.empty:
             st.dataframe(below_target[['Part', 'Category', 'Fill_Rate', 'Supplier']])
         else:
             st.success("All items are currently healthy.")
+        
         st.write("### 🔍 Why")
         st.write("Daily action items for parts failing service targets.")
         rec6 = f"Expedite {len(below_target)} risky parts." if not below_target.empty else "Strategy: Maintain current buffers."
