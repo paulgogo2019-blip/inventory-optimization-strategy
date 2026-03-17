@@ -154,11 +154,7 @@ if df is not None:
                     try:
                         from langchain_google_genai import ChatGoogleGenerativeAI
                         # This calls the secret key we force-pushed earlier
-                        llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", 
-    google_api_key=st.secrets["GEMINI_API_KEY"],
-    version="v1"
-)
+                        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=st.secrets["GEMINI_API_KEY"])
                         response = llm.invoke(f"You are a supply chain expert. Answer: {user_input}")
                         st.markdown("### 🧠 Advisor Insights")
                         st.write(response.content)
